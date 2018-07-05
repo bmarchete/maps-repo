@@ -1,68 +1,61 @@
 const restify = require("restify");
 var fs = require('fs');
+const mongoose = require('mongoose');
+mongoose.connect('<YOUR_MONGODB_CONNECTION>');
+require('./models/maps')
 
 const googleMapsClient = require('@google/maps').createClient({
-  key: 'AIzaSyAVbUQNNGKFeUMHDNZCilrkNklhPE83wKk',
+  key: '<YOUR_MAPS_APIKEY>',
   Promise: Promise
 });
-const knex = require('knex')({
-    client: 'mysql',
-    connection: {
-      host : '127.0.0.1',
-      user : 'root',
-      password : '',
-      database : 'db'
-    }
-  });
-
 
 const server = restify.createServer({
   name: "myapp",
   version: "1.0.0",
-  key: fs.readFileSync('./key.pem'), //on current folder
-  certificate: fs.readFileSync('./cert.pem')
+
 });
 
 server.use(restify.plugins.acceptParser(server.acceptable));
 server.use(restify.plugins.queryParser());
 server.use(restify.plugins.bodyParser());
 
-server.get("/all", function(req, res, next) {
-    
-  knex('places').then((dados) => {
-    res.send(dados);
+server.get("/all", function (req, res, next) {
+  mongoose.model('Maps').find().then((docs) => {
+    console.log(docs);
+    res.send(docs)
   }, next)
-
-  return next();
+  //return next();
 });
 
-server.post("/geocode", function(req, res, next) {
-  const {lat, lng} = req.body
+server.post("/geocode", function (req, res, next) {
+  const { lat, lng } = req.body
 
-  googleMapsClient.reverseGeocode({latlng: [lat, lng]}).asPromise()
-  .then((response) => {
-    const address = response.json.results[0].formatted_address
-    const place_id = response.json.results[0].place_id;
-    const image = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=15&size=300x300&sensor=false`;
+  googleMapsClient.reverseGeocode({ latlng: [lat, lng] }).asPromise()
+    .then((response) => {
+      const address = response.json.results[0].formatted_address
+      const place_id = response.json.results[0].place_id;
+      const image = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=15&size=300x300&sensor=false&key=<YOUR_MAPS_APIKEY>`;
 
-    knex('places')
-    .insert({place_id, address, image})
-    .then(() => {
-        res.send({address, image});
-    }, next)
+      var Map = mongoose.model('Maps');
+      var map = new Map({ place_id, address, image });
+      map.save().then((result) => {
+        console.log(result);
+        res.send(result)
+      }, next)
 
-  })
-  .catch((err) => {
-    res.send(err);
-  });
+
+    })
+    .catch((err) => {
+      res.send(err);
+    });
 
 });
 
-server.get(/\/(.*)?.*/,restify.plugins.serveStatic({
+server.get(/\/(.*)?.*/, restify.plugins.serveStatic({
   directory: './dist',
   default: 'index.html',
 }));
 
-server.listen(8080, function() {
-    console.log("%s listening at %s", server.name, server.url);
-  });
+server.listen(8080, function () {
+  console.log("%s listening at %s", server.name, server.url);
+});
